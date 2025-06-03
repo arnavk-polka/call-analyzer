@@ -3,11 +3,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from typing import List
+from typing import List, Literal
 from openai import OpenAI
 from dotenv import load_dotenv
 import os
 import re
+import logging
+from enum import Enum
+
+# Configure logging
+logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
 # Load environment variables from .env file
 load_dotenv()
@@ -17,6 +22,98 @@ client = OpenAI(
     api_key=os.getenv("OPENAI_API_KEY"),
     base_url="https://api.openai.com/v1"
 )
+
+class InputType(str, Enum):
+    PITCH = "pitch"
+    CHAT = "chat"
+    RANDOM = "random"
+
+class TranscriptRequest(BaseModel):
+    text: str
+
+class AnalysisResponse(BaseModel):
+    input_type: InputType
+    key_strength: str = ""
+    key_weakness: str = ""
+    investor_impression: str = ""
+    missed_opportunity: str = ""
+    confidence_rating: str = ""
+    final_summary: str = ""
+    message: str = ""
+
+def classify_input(text: str) -> InputType:
+    """Classify the input text using GPT."""
+    response = client.chat.completions.create(
+        model="gpt-4",
+        messages=[
+            {"role": "system", "content": """You are a text classifier. Classify the input into one of these categories:
+            - PITCH: Investor pitches, earnings calls, financial presentations
+            - CHAT: General conversation, Q&A, informal discussions
+            - RANDOM: Anything that doesn't fit the above
+            
+            Respond with ONLY the category name in caps."""},
+            {"role": "user", "content": text[:1000]}  # Use first 1000 chars for classification
+        ],
+        temperature=0,
+        max_tokens=10
+    )
+    
+    result = response.choices[0].message.content.strip()
+    if result == "PITCH":
+        return InputType.PITCH
+    elif result == "CHAT":
+        return InputType.CHAT
+    else:
+        return InputType.RANDOM
+
+def analyze_pitch(text: str) -> dict:
+    """Analyze investor pitch/call transcript."""
+    response = client.chat.completions.create(
+        model="gpt-4",
+        messages=[
+            {"role": "system", "content": """You are an expert investor call analyst. Your task is to analyze transcripts and provide clear, direct insights.
+            Always format your response exactly as requested, with each section clearly labeled and followed by your analysis."""},
+            {"role": "user", "content": f"""Analyze this investor call transcript and provide the following insights:
+
+            **Key Strength:**
+            Identify the single most important positive point from the call.
+
+            **Key Weakness:**
+            Point out the most critical concern or weakness discussed.
+
+            **Investor Impression:**
+            Provide a one-line summary of how investors would likely perceive this call.
+
+            **Missed Opportunity:**
+            Identify one key opportunity that wasn't fully addressed or leveraged.
+
+            **Confidence:**
+            Rate your confidence in this analysis as Low/Medium/High based on the transcript quality.
+
+            **Summary:**
+            Provide a comprehensive 2-3 sentence summary that ties all insights together.
+
+            Transcript:
+            {text}"""}
+        ],
+        temperature=0.7,
+    )
+    
+    return parse_response(response.choices[0].message.content)
+
+def analyze_chat(text: str) -> dict:
+    """Analyze general conversation."""
+    return {
+        "input_type": InputType.CHAT,
+        "message": "This appears to be a general conversation or chat. Please provide an investor pitch or earnings call transcript for detailed analysis."
+    }
+
+def handle_random_input(text: str) -> dict:
+    """Handle random/unclassified input."""
+    return {
+        "input_type": InputType.RANDOM,
+        "message": "This doesn't appear to be a startup pitch or earnings call transcript. Please provide a relevant transcript for detailed analysis."
+    }
 
 app = FastAPI()
 
@@ -44,17 +141,6 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 @app.get("/")
 async def read_root():
     return FileResponse("static/index.html")
-
-class TranscriptRequest(BaseModel):
-    text: str
-
-class Insight(BaseModel):
-    key_strength: str
-    key_weakness: str
-    investor_impression: str
-    missed_opportunity: str
-    confidence_rating: str
-    final_summary: str
 
 def parse_response(content: str) -> dict:
     """Parse the response content into structured data."""
@@ -105,60 +191,31 @@ def parse_response(content: str) -> dict:
     
     return result
 
-@app.post("/analyze", response_model=Insight)
+@app.post("/analyze", response_model=AnalysisResponse)
 async def analyze_transcript(request: TranscriptRequest):
     try:
         if not request.text:
             raise HTTPException(status_code=400, detail="Transcript text is required")
 
-        system_prompt = """You are an expert investor call analyst. Your task is to analyze transcripts and provide clear, direct insights.
-Always format your response exactly as requested, with each section clearly labeled and followed by your analysis.
-Be specific and actionable in your insights."""
-
-        user_prompt = f"""Analyze this investor call transcript and provide the following insights:
-
-**Key Strength:**
-Identify the single most important positive point from the call.
-
-**Key Weakness:**
-Point out the most critical concern or weakness discussed.
-
-**Investor Impression:**
-Provide a one-line summary of how investors would likely perceive this call.
-
-**Missed Opportunity:**
-Identify one key opportunity that wasn't fully addressed or leveraged.
-
-**Confidence:**
-Rate your confidence in this analysis as Low/Medium/High based on the transcript quality.
-
-**Summary:**
-Provide a comprehensive 2-3 sentence summary that ties all insights together.
-
-Transcript:
-{request.text}"""
-
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            temperature=0.7,
-        )
-
-        # Get the response content
-        content = response.choices[0].message.content
-        print(f"Raw GPT Response:\n{content}")  # Debug print
+        # Classify input
+        input_type = classify_input(request.text)
         
-        # Parse the response
-        parsed_response = parse_response(content)
-        print(f"Parsed Response:\n{parsed_response}")  # Debug print
+        # Route to appropriate analyzer
+        if input_type == InputType.PITCH:
+            result = analyze_pitch(request.text)
+            result["input_type"] = input_type
+            return AnalysisResponse(**result)
         
-        return Insight(**parsed_response)
+        elif input_type == InputType.CHAT:
+            result = analyze_chat(request.text)
+            return AnalysisResponse(**result)
+        
+        else:
+            result = handle_random_input(request.text)
+            return AnalysisResponse(**result)
 
     except Exception as e:
-        print(f"Error: {str(e)}")  # Log the error
+        print(f"Error: {str(e)}")
         return JSONResponse(
             status_code=500,
             content={"detail": str(e)}

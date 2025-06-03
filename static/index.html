@@ -10,7 +10,22 @@
     <style>
         body {
             font-family: 'Poppins', sans-serif;
-            background: #f8fafc;
+            background: linear-gradient(rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.7)), url('/static/office-background.png');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            background-repeat: no-repeat;
+            min-height: 100vh;
+            color: #333;
+        }
+        .container {
+            backdrop-filter: blur(10px);
+            background-color: rgba(255, 255, 255, 0.9);
+            border-radius: 1rem;
+            padding: 2rem;
+            margin-top: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
         .loading {
             display: none;
@@ -126,76 +141,93 @@
 
         <!-- Results Section -->
         <div id="results" class="hidden space-y-6 fade-in">
-            <!-- Key Insights Grid -->
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <!-- Key Strength -->
-                <div class="card bg-white rounded-xl shadow-lg p-6 border-t-4 border-green-500">
-                    <h3 class="text-xl font-semibold mb-4 text-green-600 flex items-center">
-                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+            <!-- Message Display -->
+            <div id="message-display" class="hidden bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4 rounded-r">
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <svg class="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
                         </svg>
-                        Key Strength
-                    </h3>
-                    <p id="key-strength" class="text-gray-700"></p>
-                </div>
-
-                <!-- Key Weakness -->
-                <div class="card bg-white rounded-xl shadow-lg p-6 border-t-4 border-red-500">
-                    <h3 class="text-xl font-semibold mb-4 text-red-600 flex items-center">
-                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                        </svg>
-                        Key Weakness
-                    </h3>
-                    <p id="key-weakness" class="text-gray-700"></p>
-                </div>
-
-                <!-- Investor Impression -->
-                <div class="card bg-white rounded-xl shadow-lg p-6 border-t-4 border-blue-500">
-                    <h3 class="text-xl font-semibold mb-4 text-blue-600 flex items-center">
-                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
-                        </svg>
-                        Investor Impression
-                    </h3>
-                    <p id="investor-impression" class="text-gray-700"></p>
-                </div>
-
-                <!-- Missed Opportunity -->
-                <div class="card bg-white rounded-xl shadow-lg p-6 border-t-4 border-yellow-500">
-                    <h3 class="text-xl font-semibold mb-4 text-yellow-600 flex items-center">
-                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
-                        </svg>
-                        Missed Opportunity
-                    </h3>
-                    <p id="missed-opportunity" class="text-gray-700"></p>
+                    </div>
+                    <div class="ml-3">
+                        <p id="message-text" class="text-sm text-yellow-700"></p>
+                    </div>
                 </div>
             </div>
 
-            <!-- Confidence and Summary Section -->
-            <div class="grid grid-cols-1 gap-6">
-                <!-- Confidence Rating -->
-                <div class="card bg-white rounded-xl shadow-lg p-6 border-t-4 border-purple-500">
-                    <h3 class="text-xl font-semibold text-purple-600 flex items-center mb-4">
-                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                        </svg>
-                        Analysis Confidence
-                    </h3>
-                    <p id="confidence" class="text-lg font-medium"></p>
+            <!-- Analysis Results -->
+            <div id="analysis-results" class="hidden">
+                <!-- Key Insights Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Key Strength -->
+                    <div class="card bg-white rounded-xl shadow-lg p-6 border-t-4 border-green-500">
+                        <h3 class="text-xl font-semibold mb-4 text-green-600 flex items-center">
+                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                            </svg>
+                            Key Strength
+                        </h3>
+                        <p id="key-strength" class="text-gray-700"></p>
+                    </div>
+
+                    <!-- Key Weakness -->
+                    <div class="card bg-white rounded-xl shadow-lg p-6 border-t-4 border-red-500">
+                        <h3 class="text-xl font-semibold mb-4 text-red-600 flex items-center">
+                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                            Key Weakness
+                        </h3>
+                        <p id="key-weakness" class="text-gray-700"></p>
+                    </div>
+
+                    <!-- Investor Impression -->
+                    <div class="card bg-white rounded-xl shadow-lg p-6 border-t-4 border-blue-500">
+                        <h3 class="text-xl font-semibold mb-4 text-blue-600 flex items-center">
+                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                            </svg>
+                            Investor Impression
+                        </h3>
+                        <p id="investor-impression" class="text-gray-700"></p>
+                    </div>
+
+                    <!-- Missed Opportunity -->
+                    <div class="card bg-white rounded-xl shadow-lg p-6 border-t-4 border-yellow-500">
+                        <h3 class="text-xl font-semibold mb-4 text-yellow-600 flex items-center">
+                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                            </svg>
+                            Missed Opportunity
+                        </h3>
+                        <p id="missed-opportunity" class="text-gray-700"></p>
+                    </div>
                 </div>
 
-                <!-- Final Summary -->
-                <div class="card bg-white rounded-xl shadow-lg p-6 border-t-4 border-indigo-500">
-                    <h3 class="text-xl font-semibold text-indigo-600 flex items-center mb-4">
-                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
-                        </svg>
-                        Final Summary
-                    </h3>
-                    <p id="final-summary" class="text-gray-700 text-lg leading-relaxed"></p>
+                <!-- Confidence and Summary Section -->
+                <div class="grid grid-cols-1 gap-6">
+                    <!-- Confidence Rating -->
+                    <div class="card bg-white rounded-xl shadow-lg p-6 border-t-4 border-purple-500">
+                        <h3 class="text-xl font-semibold text-purple-600 flex items-center mb-4">
+                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            Analysis Confidence
+                        </h3>
+                        <p id="confidence" class="text-lg font-medium"></p>
+                    </div>
+
+                    <!-- Final Summary -->
+                    <div class="card bg-white rounded-xl shadow-lg p-6 border-t-4 border-indigo-500">
+                        <h3 class="text-xl font-semibold text-indigo-600 flex items-center mb-4">
+                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                            </svg>
+                            Final Summary
+                        </h3>
+                        <p id="final-summary" class="text-gray-700 text-lg leading-relaxed"></p>
+                    </div>
                 </div>
             </div>
         </div>
@@ -282,25 +314,46 @@
         }
 
         function displayResults(data) {
-            // Show results section with animation
+            // Show results section
             const results = document.getElementById('results');
+            const messageDisplay = document.getElementById('message-display');
+            const analysisResults = document.getElementById('analysis-results');
+            
             results.classList.remove('hidden');
 
-            // Display single insights
-            document.getElementById('key-strength').textContent = data.key_strength;
-            document.getElementById('key-weakness').textContent = data.key_weakness;
-            document.getElementById('investor-impression').textContent = data.investor_impression;
-            document.getElementById('missed-opportunity').textContent = data.missed_opportunity;
+            if (data.input_type === 'pitch') {
+                // Hide message, show analysis
+                messageDisplay.classList.add('hidden');
+                analysisResults.classList.remove('hidden');
 
-            // Display confidence rating with color coding
-            const confidenceElement = document.getElementById('confidence');
-            confidenceElement.textContent = data.confidence_rating;
-            confidenceElement.className = 'text-lg font-medium fade-in ' + 
-                (data.confidence_rating === 'High' ? 'text-green-600' : 
-                 data.confidence_rating === 'Medium' ? 'text-yellow-600' : 'text-red-600');
+                // Display pitch analysis
+                document.getElementById('key-strength').textContent = data.key_strength;
+                document.getElementById('key-weakness').textContent = data.key_weakness;
+                document.getElementById('investor-impression').textContent = data.investor_impression;
+                document.getElementById('missed-opportunity').textContent = data.missed_opportunity;
 
-            // Display final summary
-            document.getElementById('final-summary').textContent = data.final_summary;
+                // Display confidence rating with color coding
+                const confidenceElement = document.getElementById('confidence');
+                confidenceElement.textContent = data.confidence_rating;
+                confidenceElement.className = 'text-lg font-medium fade-in ' + 
+                    (data.confidence_rating === 'High' ? 'text-green-600' : 
+                     data.confidence_rating === 'Medium' ? 'text-yellow-600' : 'text-red-600');
+
+                // Display final summary
+                document.getElementById('final-summary').textContent = data.final_summary;
+            } else {
+                // Show message, hide analysis
+                messageDisplay.classList.remove('hidden');
+                analysisResults.classList.add('hidden');
+
+                // Set message text
+                const messageText = document.getElementById('message-text');
+                messageText.textContent = "This doesn't appear to be a startup pitch or earnings call transcript. Please paste a relevant transcript for detailed analysis.";
+                
+                if (data.input_type === 'chat') {
+                    messageText.textContent += "\n\nThis looks like a general conversation or chat.";
+                }
+            }
 
             // Scroll to results
             results.scrollIntoView({ behavior: 'smooth', block: 'start' });
