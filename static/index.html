@@ -213,10 +213,8 @@
         // Initialize PDF.js
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-        // API endpoint based on environment
-        const API_URL = window.location.hostname === 'localhost' 
-            ? 'http://localhost:8000' 
-            : 'https://your-render-url.onrender.com';  // You'll replace this with your actual Render URL
+        // API endpoint (now using relative path)
+        const API_URL = '';  // Empty string means current domain
 
         // File input handling with preview
         document.getElementById('fileInput').addEventListener('change', async function(e) {

@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import List
 from openai import OpenAI
@@ -11,8 +12,11 @@ import re
 # Load environment variables from .env file
 load_dotenv()
 
-# Create a single client instance
-client = OpenAI()
+# Create OpenAI client with basic configuration
+client = OpenAI(
+    api_key=os.getenv("OPENAI_API_KEY"),
+    base_url="https://api.openai.com/v1"
+)
 
 app = FastAPI()
 
@@ -33,6 +37,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount static files
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+@app.get("/")
+async def read_root():
+    return FileResponse("static/index.html")
 
 class TranscriptRequest(BaseModel):
     text: str
