@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Call Analyst Pro</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <style>
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: #f8fafc;
+        }
+        .loading {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 1000;
+            backdrop-filter: blur(5px);
+        }
+        .loading-spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top: 4px solid #ffffff;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        .card {
+            transition: all 0.3s ease;
+        }
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+        }
+        .fade-in {
+            animation: fadeIn 0.5s ease-in;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .gradient-text {
+            background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .custom-file-input {
+            position: relative;
+            display: inline-block;
+        }
+        .custom-file-input input[type="file"] {
+            display: none;
+        }
+        .custom-file-label {
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            background: #f3f4f6;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .custom-file-label:hover {
+            background: #e5e7eb;
+        }
+
+        /* Adjust font weights for Poppins */
+        h1 {
+            font-weight: 700;
+        }
+        h2, h3 {
+            font-weight: 600;
+        }
+        p {
+            font-weight: 400;
+        }
+        .font-medium {
+            font-weight: 500;
+        }
+        .font-light {
+            font-weight: 300;
+        }
+    </style>
+</head>
+<body class="min-h-screen">
+    <div class="container mx-auto px-4 py-8 max-w-6xl">
+        <h1 class="text-5xl font-bold text-center mb-2 gradient-text">Call Analyst Pro</h1>
+        <p class="text-center text-gray-600 mb-8">AI-Powered Investor Call Analysis</p>
+        
+        <!-- Input Section -->
+        <div class="bg-white rounded-xl shadow-lg p-8 mb-8 transition-all duration-300 hover:shadow-xl">
+            <h2 class="text-2xl font-semibold mb-4 text-gray-800">Input Transcript</h2>
+            <div class="space-y-4">
+                <textarea 
+                    id="transcript" 
+                    class="w-full h-64 p-4 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all duration-300 resize-none"
+                    placeholder="Paste your investor call transcript here..."
+                ></textarea>
+                <div class="flex justify-between items-center flex-wrap gap-4">
+                    <div class="custom-file-input">
+                        <label for="fileInput" class="custom-file-label flex items-center space-x-2">
+                            <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                            </svg>
+                            <span>Upload Transcript</span>
+                        </label>
+                        <input type="file" id="fileInput" accept=".txt,.pdf" class="hidden"/>
+                    </div>
+                    <button 
+                        onclick="analyzeTranscript()" 
+                        class="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-8 py-3 rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                    >
+                        Analyze Transcript
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results Section -->
+        <div id="results" class="hidden space-y-6 fade-in">
+            <!-- Key Insights Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- Key Strength -->
+                <div class="card bg-white rounded-xl shadow-lg p-6 border-t-4 border-green-500">
+                    <h3 class="text-xl font-semibold mb-4 text-green-600 flex items-center">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                        </svg>
+                        Key Strength
+                    </h3>
+                    <p id="key-strength" class="text-gray-700"></p>
+                </div>
+
+                <!-- Key Weakness -->
+                <div class="card bg-white rounded-xl shadow-lg p-6 border-t-4 border-red-500">
+                    <h3 class="text-xl font-semibold mb-4 text-red-600 flex items-center">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                        Key Weakness
+                    </h3>
+                    <p id="key-weakness" class="text-gray-700"></p>
+                </div>
+
+                <!-- Investor Impression -->
+                <div class="card bg-white rounded-xl shadow-lg p-6 border-t-4 border-blue-500">
+                    <h3 class="text-xl font-semibold mb-4 text-blue-600 flex items-center">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                        </svg>
+                        Investor Impression
+                    </h3>
+                    <p id="investor-impression" class="text-gray-700"></p>
+                </div>
+
+                <!-- Missed Opportunity -->
+                <div class="card bg-white rounded-xl shadow-lg p-6 border-t-4 border-yellow-500">
+                    <h3 class="text-xl font-semibold mb-4 text-yellow-600 flex items-center">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                        </svg>
+                        Missed Opportunity
+                    </h3>
+                    <p id="missed-opportunity" class="text-gray-700"></p>
+                </div>
+            </div>
+
+            <!-- Confidence and Summary Section -->
+            <div class="grid grid-cols-1 gap-6">
+                <!-- Confidence Rating -->
+                <div class="card bg-white rounded-xl shadow-lg p-6 border-t-4 border-purple-500">
+                    <h3 class="text-xl font-semibold text-purple-600 flex items-center mb-4">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                        Analysis Confidence
+                    </h3>
+                    <p id="confidence" class="text-lg font-medium"></p>
+                </div>
+
+                <!-- Final Summary -->
+                <div class="card bg-white rounded-xl shadow-lg p-6 border-t-4 border-indigo-500">
+                    <h3 class="text-xl font-semibold text-indigo-600 flex items-center mb-4">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+                        </svg>
+                        Final Summary
+                    </h3>
+                    <p id="final-summary" class="text-gray-700 text-lg leading-relaxed"></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loading" class="loading flex items-center justify-center">
+        <div class="text-center">
+            <div class="loading-spinner mx-auto mb-4"></div>
+            <p class="text-white text-lg">Analyzing transcript...</p>
+        </div>
+    </div>
+
+    <script>
+        // Initialize PDF.js
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+        // API endpoint based on environment
+        const API_URL = window.location.hostname === 'localhost' 
+            ? 'http://localhost:8000' 
+            : 'https://your-render-url.onrender.com';  // You'll replace this with your actual Render URL
+
+        // File input handling with preview
+        document.getElementById('fileInput').addEventListener('change', async function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            if (file.type === 'application/pdf') {
+                try {
+                    const arrayBuffer = await file.arrayBuffer();
+                    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                    let fullText = '';
+                    
+                    for (let i = 1; i <= pdf.numPages; i++) {
+                        const page = await pdf.getPage(i);
+                        const textContent = await page.getTextContent();
+                        const pageText = textContent.items.map(item => item.str).join(' ');
+                        fullText += pageText + '\n';
+                    }
+                    
+                    document.getElementById('transcript').value = fullText;
+                } catch (error) {
+                    alert('Error reading PDF: ' + error.message);
+                }
+            } else {
+                // Handle text files as before
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    document.getElementById('transcript').value = e.target.result;
+                };
+                reader.readAsText(file);
+            }
+        });
+
+        async function analyzeTranscript() {
+            const transcript = document.getElementById('transcript').value.trim();
+            if (!transcript) {
+                alert('Please enter a transcript or upload a file.');
+                return;
+            }
+
+            // Show loading
+            document.getElementById('loading').style.display = 'flex';
+            document.getElementById('results').classList.add('hidden');
+
+            try {
+                const response = await fetch(`${API_URL}/analyze`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ text: transcript })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Analysis failed');
+                }
+
+                const data = await response.json();
+                displayResults(data);
+            } catch (error) {
+                alert('Error analyzing transcript: ' + error.message);
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+
+        function displayResults(data) {
+            // Show results section with animation
+            const results = document.getElementById('results');
+            results.classList.remove('hidden');
+
+            // Display single insights
+            document.getElementById('key-strength').textContent = data.key_strength;
+            document.getElementById('key-weakness').textContent = data.key_weakness;
+            document.getElementById('investor-impression').textContent = data.investor_impression;
+            document.getElementById('missed-opportunity').textContent = data.missed_opportunity;
+
+            // Display confidence rating with color coding
+            const confidenceElement = document.getElementById('confidence');
+            confidenceElement.textContent = data.confidence_rating;
+            confidenceElement.className = 'text-lg font-medium fade-in ' + 
+                (data.confidence_rating === 'High' ? 'text-green-600' : 
+                 data.confidence_rating === 'Medium' ? 'text-yellow-600' : 'text-red-600');
+
+            // Display final summary
+            document.getElementById('final-summary').textContent = data.final_summary;
+
+            // Scroll to results
+            results.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    </script>
+</body>
+</html> 
