@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Investor Analyzer - Debug Panel</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Poppins', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+        
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+            font-weight: 300;
+        }
+        
+        .refresh-btn {
+            background: rgba(255,255,255,0.2);
+            border: 2px solid white;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            margin-top: 15px;
+            transition: all 0.3s ease;
+            font-family: 'Poppins', sans-serif;
+            font-weight: 500;
+        }
+        
+        .refresh-btn:hover {
+            background: white;
+            color: #4CAF50;
+        }
+        
+        .content {
+            padding: 30px;
+        }
+        
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .info-card {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 15px;
+            border-left: 5px solid #4CAF50;
+        }
+        
+        .info-card h3 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+        
+        .info-card p {
+            color: #666;
+            font-size: 0.9rem;
+            font-weight: 400;
+        }
+        
+        .token-usage {
+            background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%);
+            color: white;
+            border-left-color: #ff6b6b;
+        }
+        
+        .module-section {
+            margin-bottom: 30px;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.08);
+            overflow: hidden;
+        }
+        
+        .module-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            cursor: pointer;
+            display: flex;
+            justify-content: between;
+            align-items: center;
+        }
+        
+        .module-header h2 {
+            flex-grow: 1;
+            font-weight: 500;
+        }
+        
+        .toggle-icon {
+            font-size: 1.2rem;
+            transition: transform 0.3s ease;
+        }
+        
+        .module-content {
+            padding: 20px;
+            display: none;
+        }
+        
+        .module-content.active {
+            display: block;
+        }
+        
+        .json-container {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 15px;
+            border: 1px solid #e9ecef;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .json-content {
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            line-height: 1.4;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        
+        .error-message {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ffa500 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            margin: 20px 0;
+            font-weight: 500;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 50px;
+            color: #666;
+            font-weight: 400;
+        }
+        
+        .quality-badge {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            margin-left: 10px;
+        }
+        
+        .quality-excellent { background: #d4edda; color: #155724; }
+        .quality-good { background: #cce5ff; color: #004085; }
+        .quality-needs_improvement { background: #fff3cd; color: #856404; }
+        .quality-poor { background: #f8d7da; color: #721c24; }
+        
+        .tokens {
+            font-weight: 700;
+            color: #667eea;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔍 Debug Panel</h1>
+            <button class="refresh-btn" onclick="loadDebugData()">🔄 Refresh Data</button>
+        </div>
+        
+        <div class="content">
+            <div id="loading" class="loading">
+                <p>Loading debug data...</p>
+            </div>
+            
+            <div id="error" class="error-message" style="display: none;">
+                <p>Failed to load debug data. Please try refreshing.</p>
+            </div>
+            
+            <div id="debug-content" style="display: none;">
+                <!-- Content will be loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let debugData = null;
+
+        async function loadDebugData() {
+            try {
+                document.getElementById('loading').style.display = 'block';
+                document.getElementById('error').style.display = 'none';
+                document.getElementById('debug-content').style.display = 'none';
+                
+                const response = await fetch('/debug');
+                if (!response.ok) throw new Error('Failed to fetch');
+                
+                debugData = await response.json();
+                renderDebugData();
+                
+            } catch (error) {
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('error').style.display = 'block';
+                console.error('Error loading debug data:', error);
+            }
+        }
+
+        function renderDebugData() {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('error').style.display = 'none';
+            document.getElementById('debug-content').style.display = 'block';
+            
+            const content = document.getElementById('debug-content');
+            
+            // Calculate total tokens
+            let totalTokens = 0;
+            const moduleTokens = {};
+            
+            // Extract token info if available
+            if (debugData.token_usage) {
+                Object.keys(debugData.token_usage).forEach(module => {
+                    const tokens = debugData.token_usage[module];
+                    moduleTokens[module] = tokens;
+                    totalTokens += tokens;
+                });
+            }
+            
+            content.innerHTML = `
+                <div class="info-grid">
+                    <div class="info-card">
+                        <h3>📝 Input Type</h3>
+                        <p>${debugData.input_type || 'Not specified'}</p>
+                    </div>
+                    <div class="info-card">
+                        <h3>⏰ Timestamp</h3>
+                        <p>${debugData.timestamp ? new Date(debugData.timestamp).toLocaleString() : 'Not available'}</p>
+                    </div>
+                    <div class="info-card token-usage">
+                        <h3>🎯 Total Tokens</h3>
+                        <p class="tokens">${totalTokens.toLocaleString()}</p>
+                    </div>
+                    <div class="info-card">
+                        <h3>📊 Quality Rating</h3>
+                        <p>${getQualityDisplay()}</p>
+                    </div>
+                </div>
+                
+                ${renderModuleSection('📖 Input Text', 'input_text', debugData.input_text)}
+                ${renderModuleSection('🎯 Pitch Understanding', 'pitch_understanding_module', debugData.pitch_understanding_module, moduleTokens.pitch_understanding)}
+                ${renderModuleSection('💬 Communication Scorer', 'communication_scorer_module', debugData.communication_scorer_module, moduleTokens.communication_scorer)}
+                ${renderModuleSection('💰 Fundraising Analysis', 'fundraising_calibration_module', debugData.fundraising_calibration_module, moduleTokens.fundraising_calibration)}
+                ${renderModuleSection('👥 Investor Response', 'investor_response_module', debugData.investor_response_module, moduleTokens.investor_response)}
+                ${renderModuleSection('🔍 Audit Results', 'auditor_module', debugData.auditor_module, moduleTokens.auditor)}
+                ${renderModuleSection('📋 Final Analysis', 'final_analysis', debugData.final_analysis)}
+            `;
+            
+            // Add click handlers for toggles
+            document.querySelectorAll('.module-header').forEach(header => {
+                header.addEventListener('click', toggleModule);
+            });
+        }
+        
+        function getQualityDisplay() {
+            if (debugData.auditor_module && debugData.auditor_module.overall_quality) {
+                const quality = debugData.auditor_module.overall_quality;
+                return `<span class="quality-badge quality-${quality}">${quality.replace('_', ' ').toUpperCase()}</span>`;
+            }
+            return 'Not assessed';
+        }
+
+        function renderModuleSection(title, key, data, tokens = null) {
+            if (!data || data === null) return '';
+            
+            const tokensDisplay = tokens ? `<span class="tokens">(${tokens.toLocaleString()} tokens)</span>` : '';
+            
+            return `
+                <div class="module-section">
+                    <div class="module-header" data-target="${key}">
+                        <h2>${title} ${tokensDisplay}</h2>
+                        <span class="toggle-icon">▼</span>
+                    </div>
+                    <div class="module-content" id="content-${key}">
+                        <div class="json-container">
+                            <pre class="json-content">${JSON.stringify(data, null, 2)}</pre>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function toggleModule(event) {
+            const target = event.currentTarget.dataset.target;
+            const content = document.getElementById(`content-${target}`);
+            const icon = event.currentTarget.querySelector('.toggle-icon');
+            
+            if (content.classList.contains('active')) {
+                content.classList.remove('active');
+                icon.textContent = '▼';
+                icon.style.transform = 'rotate(0deg)';
+            } else {
+                content.classList.add('active');
+                icon.textContent = '▲';
+                icon.style.transform = 'rotate(180deg)';
+            }
+        }
+
+        // Load data when page loads
+        window.addEventListener('load', loadDebugData);
+        
+        // Auto-refresh every 30 seconds
+        setInterval(loadDebugData, 30000);
+    </script>
+</body>
+</html> 
