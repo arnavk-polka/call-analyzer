@@ -738,25 +738,25 @@ async def analyze_transcript(request: TranscriptRequest):
                     else:
                         # Fallback to old classification method
                         print(f"No specific routing for speaker={speaker}, phase={phase}. Using fallback classification")
-            input_type = classify_input(request.text)
-            if input_type == InputType.PITCH:
-                result = analyze_pitch(request.text)
-                result["input_type"] = input_type
-                return AnalysisResponse(**result)
+                        input_type = classify_input(request.text)
+                        if input_type == InputType.PITCH:
+                            result = analyze_pitch(request.text)
+                            result["input_type"] = input_type
+                            return AnalysisResponse(**result)
                         elif input_type == InputType.FOUNDER_RESPONSE:
                             result = analyze_founder_response(request.text)
                             return AnalysisResponse(**result)
                         elif input_type == InputType.INVESTOR_RESPONSE:
                             result = analyze_investor_response(request.text)
                             return AnalysisResponse(**result)
-            elif input_type == InputType.CHAT:
-                result = analyze_chat(request.text)
-                return AnalysisResponse(**result)
-            else:
-                result = handle_random_input(request.text)
-                return AnalysisResponse(**result)
-
-    except Exception as e:
+                        elif input_type == InputType.CHAT:
+                            result = analyze_chat(request.text)
+                            return AnalysisResponse(**result)
+                        else:
+                            result = handle_random_input(request.text)
+                            return AnalysisResponse(**result)
+                            
+            except Exception as e:
                 print(f"Error in advanced preprocessing: {e}")
                 import traceback
                 traceback.print_exc()
