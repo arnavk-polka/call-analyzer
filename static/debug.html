@@ -189,7 +189,7 @@
         
         .tokens {
             font-weight: 700;
-            color: #667eea;
+            color: #000000;
         }
     </style>
 </head>
@@ -224,7 +224,7 @@
                 document.getElementById('error').style.display = 'none';
                 document.getElementById('debug-content').style.display = 'none';
                 
-                const response = await fetch('/debug');
+                const response = await fetch('/debug/data');
                 if (!response.ok) throw new Error('Failed to fetch');
                 
                 debugData = await response.json();

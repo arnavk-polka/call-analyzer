@@ -16,6 +16,7 @@ from modules.investor_response_analyzer import InvestorResponseModule
 from modules.communication_scorer import CommunicationScorerModule
 from modules.fundraising_calibration import FundraisingCalibrationModule
 from modules.auditor import AuditorModule
+from modules.conversation_preprocessor import ConversationPreprocessor
 
 # Configure logging
 logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
@@ -31,12 +32,14 @@ client = OpenAI(
 
 class InputType(str, Enum):
     PITCH = "pitch"
+    FOUNDER_RESPONSE = "founder_response"
+    INVESTOR_RESPONSE = "investor_response"
     CHAT = "chat"
     RANDOM = "random"
 
 class TranscriptRequest(BaseModel):
     text: str
-    type: Literal["pitch", "investor_response", "communication"] = "pitch"
+    type: Literal["pitch", "founder_response", "investor_response", "communication"] = "pitch"
 
 class InvestorResponseData(BaseModel):
     objections: List[str] = []
@@ -107,6 +110,9 @@ def track_token_usage(module_name: str, response) -> int:
 
 def classify_input(text: str) -> InputType:
     """Classify the input text using GPT."""
+    print(f"=== CLASSIFY_INPUT DEBUG ===")
+    print(f"Classifying first 1000 chars: {text[:1000]}...")
+    
     response = client.chat.completions.create(
         model="gpt-4",
         messages=[
@@ -123,11 +129,16 @@ def classify_input(text: str) -> InputType:
     )
     
     result = response.choices[0].message.content.strip()
+    print(f"OpenAI classification result: '{result}'")
+    
     if result == "PITCH":
+        print("Classified as PITCH")
         return InputType.PITCH
     elif result == "CHAT":
+        print("Classified as CHAT")
         return InputType.CHAT
     else:
+        print(f"Classified as RANDOM (original result: '{result}')")
         return InputType.RANDOM
 
 def analyze_pitch(text: str) -> dict:
@@ -259,6 +270,7 @@ def analyze_investor_response(text: str) -> dict:
     debug_storage['last_analysis']['input_text'] = text
     debug_storage['last_analysis']['input_type'] = 'INVESTOR_RESPONSE'
     debug_storage['last_analysis']['timestamp'] = datetime.now().isoformat()
+    debug_storage['last_analysis']['token_usage'] = {}
     
     try:
         # Analyze investor response
@@ -282,7 +294,8 @@ def analyze_investor_response(text: str) -> dict:
         
         # Run audit on investor response analysis
         auditor = AuditorModule(client)
-        audit_results = auditor.audit_analysis({'investor_response': result['investor_response']})
+        audit_results, audit_tokens = auditor.audit_analysis({'investor_response': result['investor_response']})
+        debug_storage['last_analysis']['token_usage']['auditor'] = audit_tokens
         
         # Store audit results for debugging
         debug_storage['last_analysis']['auditor_module'] = audit_results
@@ -331,6 +344,73 @@ def analyze_communication(text: str) -> dict:
         return result
     except Exception as e:
         print(f"Error in communication analysis: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        raise
+
+def analyze_founder_response(text: str) -> dict:
+    """Analyze founder response to investor questions/concerns."""
+    # Store input for debugging
+    debug_storage['last_analysis']['input_text'] = text
+    debug_storage['last_analysis']['input_type'] = 'FOUNDER_RESPONSE'
+    debug_storage['last_analysis']['timestamp'] = datetime.now().isoformat()
+    debug_storage['last_analysis']['token_usage'] = {}
+    
+    try:
+        # Analyze founder response using specialized prompting
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": """You are an expert at analyzing founder responses to investor inquiries. 
+                Evaluate how well the founder addresses concerns, communicates value, and builds investor confidence."""},
+                {"role": "user", "content": f"""Analyze this founder response and provide insights:
+
+                **Key Strength:**
+                What did the founder do well in this response?
+
+                **Key Weakness:**
+                What could the founder have addressed better?
+
+                **Investor Impression:**
+                How would investors likely perceive this response?
+
+                **Missed Opportunity:**
+                What opportunity did the founder miss to strengthen their case?
+
+                **Confidence:**
+                Rate confidence in this analysis as Low/Medium/High.
+
+                **Summary:**
+                Provide a 2-3 sentence summary of the founder's communication effectiveness.
+
+                Founder Response:
+                {text}"""}
+            ],
+            temperature=0.7,
+        )
+        
+        # Track tokens
+        track_token_usage('founder_response_analysis', response)
+        
+        result = parse_response(response.choices[0].message.content)
+        result['input_type'] = InputType.FOUNDER_RESPONSE
+        
+        # Run audit on founder response analysis
+        auditor = AuditorModule(client)
+        audit_results, audit_tokens = auditor.audit_analysis(result)
+        debug_storage['last_analysis']['token_usage']['auditor'] = audit_tokens
+        
+        # Store audit results for debugging
+        debug_storage['last_analysis']['auditor_module'] = audit_results
+        
+        # Add audit results to final response
+        result['audit_results'] = audit_results
+        
+        debug_storage['last_analysis']['final_analysis'] = result
+        return result
+        
+    except Exception as e:
+        print(f"Error in founder response analysis: {str(e)}")
         import traceback
         print(traceback.format_exc())
         raise
@@ -417,6 +497,11 @@ async def analyze_transcript(request: TranscriptRequest):
         if not request.text:
             raise HTTPException(status_code=400, detail="Transcript text is required")
 
+        print(f"=== ANALYZE ENDPOINT DEBUG ===")
+        print(f"Original request text length: {len(request.text)}")
+        print(f"Request type: {request.type}")
+        print(f"Text preview: {request.text[:200]}...")
+
         # Reset debug storage for new request
         debug_storage['last_analysis'] = {
             'input_text': request.text,
@@ -441,27 +526,219 @@ async def analyze_transcript(request: TranscriptRequest):
             print("Processing as investor response")
             result = analyze_investor_response(request.text)
             return AnalysisResponse(**result)
+        elif request.type == "founder_response":
+            print("Processing as founder response")
+            result = analyze_founder_response(request.text)
+            return AnalysisResponse(**result)
         else:
-            print("Processing as pitch")
-            input_type = classify_input(request.text)
-            if input_type == InputType.PITCH:
-                result = analyze_pitch(request.text)
-                result["input_type"] = input_type
-                return AnalysisResponse(**result)
-            elif input_type == InputType.CHAT:
-                result = analyze_chat(request.text)
-                return AnalysisResponse(**result)
-            else:
-                result = handle_random_input(request.text)
-                return AnalysisResponse(**result)
+            print("Processing with advanced preprocessing")
+            print(f"Text length before preprocessing: {len(request.text)}")
+            
+            try:
+                # Use advanced preprocessing to detect conversation structure
+                preprocessor = ConversationPreprocessor(client)
+                preprocessing_result = preprocessor.preprocess_conversation(request.text)
+                
+                print(f"Preprocessing successful. Speakers: {preprocessing_result['conversation_summary']['speakers_present']}")
+                print(f"Phases: {preprocessing_result['conversation_summary']['phases_present']}")
+                print(f"Number of blocks: {len(preprocessing_result['thematic_blocks'])}")
+                
+                # Debug: Print each block's text length
+                for i, block in enumerate(preprocessing_result['thematic_blocks']):
+                    print(f"Block {i+1} text length: {len(block['text'])}, preview: {block['text'][:100]}...")
+                
+                speakers = preprocessing_result["conversation_summary"]["speakers_present"]
+                phases = preprocessing_result["conversation_summary"]["phases_present"]
+                
+                # Determine analysis type based on sophisticated preprocessing
+                if len(preprocessing_result["thematic_blocks"]) > 1:
+                    # Multi-block conversation - use conversation analysis
+                    print("Detected multi-block conversation, using conversation analysis")
+                    analyzed_blocks = []
+                    
+                    for i, block in enumerate(preprocessing_result["thematic_blocks"]):
+                        print(f"Analyzing block {i+1}: speaker={block['speaker']}, phase={block['phase']}")
+                        print(f"Block text preview: {block['text'][:100]}...")
+                        
+                        try:
+                            block_analysis = await analyze_conversation_block(block)
+                            analyzed_blocks.append(block_analysis)
+                            print(f"Block {i+1} analysis successful")
+                        except Exception as block_error:
+                            print(f"Error analyzing block {i+1}: {block_error}")
+                            import traceback
+                            traceback.print_exc()
+                            # Add a fallback analysis for this block
+                            analyzed_blocks.append({
+                                "block_info": block,
+                                "analysis_results": {"type": "error", "message": str(block_error)}
+                            })
+                    
+                    print(f"Completed analysis of {len(analyzed_blocks)} blocks")
+                    
+                    # Extract the most relevant analysis for the response
+                    try:
+                        primary_analysis = extract_primary_analysis(analyzed_blocks)
+                        primary_analysis["input_type"] = InputType.CHAT
+                        print(f"Primary analysis extracted successfully")
+                        print(f"Primary analysis keys: {list(primary_analysis.keys())}")
+                        
+                        # Debug the AnalysisResponse creation
+                        print(f"=== CREATING ANALYSIS RESPONSE ===")
+                        print(f"input_type: {primary_analysis.get('input_type')}")
+                        print(f"investor_response type: {type(primary_analysis.get('investor_response'))}")
+                        print(f"investor_response value: {primary_analysis.get('investor_response')}")
+                        
+                        # Validate and convert investor_response if needed
+                        if primary_analysis.get('investor_response'):
+                            print(f"Converting investor_response to InvestorResponseData")
+                            try:
+                                investor_data = primary_analysis['investor_response']
+                                primary_analysis['investor_response'] = InvestorResponseData(**investor_data)
+                                print(f"Successfully converted investor_response")
+                            except Exception as conversion_error:
+                                print(f"Error converting investor_response: {conversion_error}")
+                                # Set to None if conversion fails
+                                primary_analysis['investor_response'] = None
+                        
+                        try:
+                            response_obj = AnalysisResponse(**primary_analysis)
+                            print(f"AnalysisResponse created successfully")
+                            print(f"Response investor_response: {response_obj.investor_response}")
+                            print(f"=== ABOUT TO RETURN RESPONSE ===")
+                            print(f"Response type: {type(response_obj)}")
+                            print(f"Response input_type: {response_obj.input_type}")
+                            print(f"Response message: {response_obj.message}")
+                            print(f"=== SUCCESSFULLY RETURNING RESPONSE ===")
+                            return response_obj
+                        except Exception as response_error:
+                            print(f"!!! ERROR CREATING ANALYSISRESPONSE: {response_error}")
+                            print(f"Primary analysis keys: {list(primary_analysis.keys())}")
+                            print(f"Primary analysis investor_response type: {type(primary_analysis.get('investor_response'))}")
+                            import traceback
+                            traceback.print_exc()
+                            
+                            # Don't raise - create a basic fallback response instead
+                            print("Creating fallback response due to AnalysisResponse error")
+                            fallback_response = {
+                                "input_type": InputType.CHAT,
+                                "message": f"Analysis completed but response formatting failed: {str(response_error)}",
+                                "key_strength": primary_analysis.get("key_strength", "Analysis completed"),
+                                "key_weakness": primary_analysis.get("key_weakness", "Technical formatting issue"),
+                                "investor_impression": primary_analysis.get("investor_impression", "Mixed results"),
+                                "missed_opportunity": primary_analysis.get("missed_opportunity", "Response formatting limitation"),
+                                "confidence_rating": "Low",
+                                "final_summary": "Analysis completed with technical issues"
+                            }
+                            return AnalysisResponse(**fallback_response)
+                            
+                    except Exception as extract_error:
+                        print(f"Error in extract_primary_analysis: {extract_error}")
+                        import traceback
+                        traceback.print_exc()
+                        
+                        # Manual fallback - create a basic response
+                        fallback_response = {
+                            "input_type": InputType.CHAT,
+                            "message": "Multi-block conversation analysis completed with partial results",
+                            "key_strength": "Multi-speaker conversation detected",
+                            "key_weakness": "Analysis encountered technical issues",
+                            "investor_impression": "Mixed conversation analysis",
+                            "missed_opportunity": "Technical analysis limitations",
+                            "confidence_rating": "Low",
+                            "final_summary": f"Analyzed {len(analyzed_blocks)} conversation blocks"
+                        }
+                        return AnalysisResponse(**fallback_response)
+                    
+                else:
+                    # Single block - route to appropriate analyzer
+                    single_block = preprocessing_result["thematic_blocks"][0]
+                    speaker = single_block["speaker"]
+                    phase = single_block["phase"]
+                    
+                    print(f"Single block detected: {speaker} in {phase} phase")
+                    
+                    if speaker == "founder" and phase == "pitch":
+                        print("Routing to pitch analyzer")
+                        result = analyze_pitch(request.text)
+                        result["input_type"] = InputType.PITCH
+                        return AnalysisResponse(**result)
+                        
+                    elif speaker == "investor":
+                        print("Routing to investor response analyzer")
+                        result = analyze_investor_response(request.text)
+                        return AnalysisResponse(**result)
+                        
+                    elif speaker == "founder" and phase in ["qa", "objections"]:
+                        print("Routing to founder response analyzer")
+                        result = analyze_founder_response(request.text)
+                        return AnalysisResponse(**result)
+                        
+                    elif speaker == "founder":
+                        print("Routing to pitch analyzer (founder content)")
+                        result = analyze_pitch(request.text)
+                        result["input_type"] = InputType.PITCH
+                        return AnalysisResponse(**result)
+                        
+                    else:
+                        # Fallback to old classification method
+                        print(f"No specific routing for speaker={speaker}, phase={phase}. Using fallback classification")
+                        input_type = classify_input(request.text)
+                        if input_type == InputType.PITCH:
+                            result = analyze_pitch(request.text)
+                            result["input_type"] = input_type
+                            return AnalysisResponse(**result)
+                        elif input_type == InputType.FOUNDER_RESPONSE:
+                            result = analyze_founder_response(request.text)
+                            return AnalysisResponse(**result)
+                        elif input_type == InputType.INVESTOR_RESPONSE:
+                            result = analyze_investor_response(request.text)
+                            return AnalysisResponse(**result)
+                        elif input_type == InputType.CHAT:
+                            result = analyze_chat(request.text)
+                            return AnalysisResponse(**result)
+                        else:
+                            result = handle_random_input(request.text)
+                            return AnalysisResponse(**result)
+            
+            except Exception as e:
+                print(f"Error in advanced preprocessing: {e}")
+                import traceback
+                traceback.print_exc()
+                
+                # Fallback to old classification method
+                print("Using fallback classification due to preprocessing error")
+                input_type = classify_input(request.text)
+                if input_type == InputType.PITCH:
+                    result = analyze_pitch(request.text)
+                    result["input_type"] = input_type
+                    return AnalysisResponse(**result)
+                elif input_type == InputType.FOUNDER_RESPONSE:
+                    result = analyze_founder_response(request.text)
+                    return AnalysisResponse(**result)
+                elif input_type == InputType.INVESTOR_RESPONSE:
+                    result = analyze_investor_response(request.text)
+                    return AnalysisResponse(**result)
+                elif input_type == InputType.CHAT:
+                    result = analyze_chat(request.text)
+                    return AnalysisResponse(**result)
+                else:
+                    result = handle_random_input(request.text)
+                    return AnalysisResponse(**result)
 
     except Exception as e:
-        print(f"Error in analyze_transcript: {str(e)}")
+        print(f"!!! OUTER EXCEPTION IN ANALYZE_TRANSCRIPT: {str(e)}")
+        print(f"Exception type: {type(e)}")
         import traceback
         print(traceback.format_exc())
+        
+        # Log the request details for debugging
+        print(f"Request text length: {len(request.text) if request.text else 0}")
+        print(f"Request type: {request.type}")
+        
         return JSONResponse(
             status_code=500,
-            content={"detail": str(e)}
+            content={"detail": f"Server error: {str(e)}"}
         )
 
 @app.get("/health")
@@ -469,14 +746,376 @@ async def health_check():
     return {"status": "healthy"}
 
 @app.get("/debug")
-async def debug_panel():
-    """Debug panel to show intermediate values from each module."""
-    return debug_storage['last_analysis']
-
-@app.get("/debug-ui")
 async def debug_ui():
     """Serve the debug UI HTML interface."""
     return FileResponse("static/debug.html")
+
+@app.get("/debug/data")
+async def debug_data():
+    """Get debug data for the debug UI."""
+    return debug_storage['last_analysis']
+
+def preprocess_and_suggest_type(text: str) -> dict:
+    """Preprocess text using the advanced conversation preprocessor."""
+    
+    try:
+        # Use the new conversation preprocessor
+        preprocessor = ConversationPreprocessor(client)
+        result = preprocessor.preprocess_conversation(text)
+        
+        # Add backward compatibility for the old format
+        # Determine primary suggested type based on conversation analysis
+        speakers = result["conversation_summary"]["speakers_present"]
+        phases = result["conversation_summary"]["phases_present"]
+        
+        if "founder" in speakers and "investor" in speakers:
+            # Multi-speaker conversation
+            if "pitch" in phases:
+                suggested_type = InputType.PITCH
+            elif "qa" in phases or "objections" in phases:
+                suggested_type = InputType.CHAT  # Mixed conversation
+            else:
+                suggested_type = InputType.CHAT
+        elif "founder" in speakers:
+            if "pitch" in phases:
+                suggested_type = InputType.PITCH
+            else:
+                suggested_type = InputType.FOUNDER_RESPONSE
+        elif "investor" in speakers:
+            suggested_type = InputType.INVESTOR_RESPONSE
+        else:
+            # Fall back to old classification method
+            suggested_type = classify_input(text)
+        
+        # Add the new preprocessing results
+        result["suggested_type"] = suggested_type
+        result["legacy_pattern_suggestion"] = suggested_type  # For backward compatibility
+        result["text_preview"] = text[:200] + "..." if len(text) > 200 else text
+        
+        return result
+        
+    except Exception as e:
+        print(f"Error in advanced preprocessing: {e}")
+        # Fallback to simple preprocessing
+        return simple_preprocess_and_suggest_type(text)
+
+def simple_preprocess_and_suggest_type(text: str) -> dict:
+    """Simple preprocessing function as fallback."""
+    
+    # Quick pattern matching for common indicators
+    founder_indicators = [
+        "our business model", "our revenue", "we've grown", "our customers",
+        "let me explain", "to address your concern", "our metrics show",
+        "we're seeing", "our strategy", "we believe", "our team has"
+    ]
+    
+    investor_indicators = [
+        "what about", "how do you", "i'm concerned about", "can you explain",
+        "what's your", "how will you", "what if", "i'd like to understand",
+        "my question is", "i'm wondering", "what are your thoughts on",
+        "a couple of questions", "what kind of", "any early", "how long is",
+        "what key milestones", "thanks for", "that was compelling",
+        "i really like", "couple of questions", "what milestones",
+        "projected runway", "traction have you seen", "partnerships",
+        "compelling pitch", "questions:", "pilots or"
+    ]
+    
+    pitch_indicators = [
+        "today i'll be presenting", "our company", "market opportunity",
+        "our solution", "business model", "financial projections",
+        "funding ask", "use of funds", "competitive advantage"
+    ]
+    
+    text_lower = text.lower()
+    
+    founder_score = sum(1 for indicator in founder_indicators if indicator in text_lower)
+    investor_score = sum(1 for indicator in investor_indicators if indicator in text_lower)
+    pitch_score = sum(1 for indicator in pitch_indicators if indicator in text_lower)
+    
+    # Use GPT classification as primary method
+    suggested_type = classify_input(text)
+    
+    # Pattern matching as secondary validation
+    pattern_suggestion = None
+    if founder_score > investor_score and founder_score > pitch_score:
+        pattern_suggestion = InputType.FOUNDER_RESPONSE
+    elif investor_score > founder_score and investor_score > pitch_score:
+        pattern_suggestion = InputType.INVESTOR_RESPONSE
+    elif pitch_score > 0:
+        pattern_suggestion = InputType.PITCH
+    
+    return {
+        "suggested_type": suggested_type,
+        "pattern_suggestion": pattern_suggestion,
+        "confidence_scores": {
+            "founder_indicators": founder_score,
+            "investor_indicators": investor_score,
+            "pitch_indicators": pitch_score
+        },
+        "text_preview": text[:200] + "..." if len(text) > 200 else text
+    }
+
+@app.post("/analyze-conversation")
+async def analyze_conversation(request: TranscriptRequest):
+    """Advanced conversation analysis with role separation and thematic chunking."""
+    try:
+        if not request.text:
+            raise HTTPException(status_code=400, detail="Conversation text is required")
+        
+        # Use the advanced conversation preprocessor
+        preprocessor = ConversationPreprocessor(client)
+        conversation_analysis = preprocessor.preprocess_conversation(request.text)
+        
+        # Analyze each thematic block
+        analyzed_blocks = []
+        for block in conversation_analysis["thematic_blocks"]:
+            block_analysis = await analyze_conversation_block(block)
+            analyzed_blocks.append(block_analysis)
+        
+        return {
+            "conversation_structure": conversation_analysis,
+            "analyzed_blocks": analyzed_blocks,
+            "overall_insights": generate_conversation_insights(analyzed_blocks)
+        }
+        
+    except Exception as e:
+        print(f"Error in analyze_conversation: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"detail": str(e)}
+        )
+
+async def analyze_conversation_block(block: dict) -> dict:
+    """Analyze a single conversation block based on its phase and speaker."""
+    
+    phase = block["phase"]
+    speaker = block["speaker"] 
+    text = block["text"]
+    
+    print(f"=== ANALYZE_CONVERSATION_BLOCK DEBUG ===")
+    print(f"Block phase: {phase}, speaker: {speaker}")
+    print(f"Block text length: {len(text)}")
+    print(f"Block text preview: {text[:150]}...")
+    
+    analysis = {
+        "block_info": block,
+        "analysis_results": {}
+    }
+    
+    try:
+        if phase == "pitch" and speaker == "founder":
+            # Analyze as pitch
+            print(f"Calling analyze_pitch with text length: {len(text)}")
+            result = analyze_pitch(text)
+            analysis["analysis_results"] = result
+        elif speaker == "investor":
+            # Analyze as investor response
+            print(f"Calling InvestorResponseModule with text length: {len(text)}")
+            investor_response_module = InvestorResponseModule(client)
+            result = investor_response_module.analyze(text)
+            
+            # Store in debug_storage for debugging visibility
+            debug_storage['last_analysis']['investor_response_module'] = result
+            
+            analysis["analysis_results"] = {
+                "type": "investor_response",
+                "data": result
+            }
+        elif speaker == "founder" and phase in ["qa", "objections"]:
+            # Analyze as founder response
+            print(f"Calling analyze_founder_response with text length: {len(text)}")
+            result = analyze_founder_response(text)
+            analysis["analysis_results"] = result
+        else:
+            # General analysis
+            print(f"Using general analysis for speaker={speaker}, phase={phase}")
+            analysis["analysis_results"] = {
+                "type": "general",
+                "summary": f"General {phase} content from {speaker}"
+            }
+            
+    except Exception as e:
+        print(f"Error analyzing block: {e}")
+        analysis["analysis_results"] = {
+            "type": "error",
+            "message": str(e)
+        }
+    
+    return analysis
+
+def generate_conversation_insights(analyzed_blocks: List[dict]) -> dict:
+    """Generate overall insights from all analyzed conversation blocks."""
+    
+    insights = {
+        "conversation_quality": "Medium",
+        "key_themes": [],
+        "investor_engagement": "Unknown",
+        "founder_performance": "Unknown",
+        "next_steps_suggested": [],
+        "red_flags": [],
+        "positive_signals": []
+    }
+    
+    # Extract insights from blocks
+    for block in analyzed_blocks:
+        if block["block_info"]["speaker"] == "investor":
+            # Extract investor insights
+            if "data" in block["analysis_results"]:
+                data = block["analysis_results"]["data"]
+                insights["positive_signals"].extend(data.get("interest_signals", []))
+                insights["red_flags"].extend(data.get("objections", []))
+        
+        elif block["block_info"]["speaker"] == "founder":
+            # Extract founder insights
+            if "key_strength" in block["analysis_results"]:
+                insights["positive_signals"].append(block["analysis_results"]["key_strength"])
+            if "key_weakness" in block["analysis_results"]:
+                insights["red_flags"].append(block["analysis_results"]["key_weakness"])
+    
+    return insights
+
+def extract_primary_analysis(analyzed_blocks: List[dict]) -> dict:
+    """Extract the most relevant analysis from multiple conversation blocks."""
+    
+    print(f"=== EXTRACT_PRIMARY_ANALYSIS DEBUG ===")
+    print(f"Number of analyzed blocks: {len(analyzed_blocks)}")
+    
+    primary_analysis = {
+        "key_strength": "",
+        "key_weakness": "",
+        "investor_impression": "",
+        "missed_opportunity": "",
+        "confidence_rating": "Medium",
+        "final_summary": "",
+        "message": "Multi-block conversation analysis completed",
+        "pitch_understanding": {},
+        "investor_response": None,
+        "communication_scores": None,
+        "fundraising_analysis": None,
+        "audit_results": None
+    }
+    
+    # Collect insights from all blocks
+    strengths = []
+    weaknesses = []
+    impressions = []
+    opportunities = []
+    
+    investor_responses = {
+        'objections': [],
+        'questions': [],
+        'interest_signals': [],
+        'areas_of_skepticism': []
+    }
+    
+    for i, block in enumerate(analyzed_blocks):
+        print(f"\n--- Analyzing Block {i+1} ---")
+        print(f"Block info: {block.get('block_info', {})}")
+        
+        analysis = block.get("analysis_results", {})
+        print(f"Analysis keys: {list(analysis.keys())}")
+        print(f"Analysis type: {analysis.get('type', 'unknown')}")
+        
+        # Extract standard analysis fields
+        if "key_strength" in analysis and analysis["key_strength"]:
+            print(f"Found key_strength: {analysis['key_strength'][:100]}...")
+            strengths.append(analysis["key_strength"])
+        if "key_weakness" in analysis and analysis["key_weakness"]:
+            print(f"Found key_weakness: {analysis['key_weakness'][:100]}...")
+            weaknesses.append(analysis["key_weakness"])
+        if "investor_impression" in analysis and analysis["investor_impression"]:
+            print(f"Found investor_impression: {analysis['investor_impression'][:100]}...")
+            impressions.append(analysis["investor_impression"])
+        if "missed_opportunity" in analysis and analysis["missed_opportunity"]:
+            print(f"Found missed_opportunity: {analysis['missed_opportunity'][:100]}...")
+            opportunities.append(analysis["missed_opportunity"])
+            
+        # Extract investor response data
+        if analysis.get("type") == "investor_response" and "data" in analysis:
+            print(f"Found investor response data!")
+            data = analysis["data"]
+            print(f"Investor data keys: {list(data.keys())}")
+            investor_responses['objections'].extend(data.get('objections', []))
+            investor_responses['questions'].extend(data.get('questions', []))
+            investor_responses['interest_signals'].extend(data.get('interest_signals', []))
+            investor_responses['areas_of_skepticism'].extend(data.get('areas_of_skepticism', []))
+            print(f"Added {len(data.get('questions', []))} questions, {len(data.get('interest_signals', []))} signals")
+        
+        # Extract pitch understanding if available
+        if "pitch_understanding" in analysis and analysis["pitch_understanding"]:
+            print(f"Found pitch understanding data")
+            primary_analysis["pitch_understanding"] = analysis["pitch_understanding"]
+    
+    # Combine insights
+    primary_analysis["key_strength"] = "; ".join(strengths) if strengths else "Multiple positive aspects identified"
+    primary_analysis["key_weakness"] = "; ".join(weaknesses) if weaknesses else "Several areas for improvement noted"
+    primary_analysis["investor_impression"] = "; ".join(impressions) if impressions else "Mixed investor engagement observed"
+    primary_analysis["missed_opportunity"] = "; ".join(opportunities) if opportunities else "Various optimization opportunities identified"
+    
+    # Add investor response data if available
+    if any(investor_responses.values()):
+        print(f"Adding investor response data to primary analysis")
+        primary_analysis["investor_response"] = investor_responses
+    else:
+        print(f"No investor response data found")
+    
+    # Generate business-focused summary about the pitch content
+    summary_parts = []
+    
+    # Determine conversation type and outcome
+    has_investor_feedback = any(investor_responses.values())
+    questions_count = len(investor_responses.get('questions', []))
+    signals_count = len(investor_responses.get('interest_signals', []))
+    objections_count = len(investor_responses.get('objections', []))
+    
+    # Start with pitch characterization
+    if has_investor_feedback:
+        if signals_count > objections_count:
+            summary_parts.append("The pitch generated positive investor interest")
+        elif objections_count > signals_count:
+            summary_parts.append("The pitch raised several investor concerns")
+        else:
+            summary_parts.append("The pitch received mixed investor feedback")
+    else:
+        summary_parts.append("The pitch presentation covered key business fundamentals")
+    
+    # Add key strengths insight
+    if strengths:
+        # Extract the most compelling strength
+        main_strength = strengths[0]  # Take first/primary strength
+        if "unique" in main_strength.lower() or "competitive" in main_strength.lower():
+            summary_parts.append("with strong competitive differentiation highlighted")
+        elif "market" in main_strength.lower() or "opportunity" in main_strength.lower():
+            summary_parts.append("with compelling market opportunity demonstrated")
+        elif "team" in main_strength.lower() or "experience" in main_strength.lower():
+            summary_parts.append("with strong team credentials presented")
+        elif "traction" in main_strength.lower() or "growth" in main_strength.lower():
+            summary_parts.append("with solid business traction evidenced")
+        else:
+            summary_parts.append("with notable business strengths demonstrated")
+    
+    # Add investor engagement characterization
+    if has_investor_feedback:
+        if questions_count >= 3:
+            summary_parts.append(f"Investors showed high engagement with {questions_count} detailed questions")
+        elif questions_count > 0:
+            summary_parts.append(f"Investors showed interest with {questions_count} follow-up questions")
+        
+        # Add specific areas of investor focus
+        if objections_count > 0:
+            summary_parts.append("though some concerns were raised requiring further clarification")
+    
+    # Construct final business summary
+    primary_analysis["final_summary"] = ". ".join(summary_parts) + "."
+    
+    print(f"\n=== FINAL PRIMARY ANALYSIS ===")
+    print(f"Key strength: {primary_analysis['key_strength'][:100]}...")
+    print(f"Investor response present: {primary_analysis['investor_response'] is not None}")
+    if primary_analysis['investor_response']:
+        print(f"Questions count: {len(primary_analysis['investor_response']['questions'])}")
+        print(f"Interest signals count: {len(primary_analysis['investor_response']['interest_signals'])}")
+    
+    return primary_analysis
 
 if __name__ == "__main__":
     import uvicorn

@@ -206,7 +206,7 @@
                 </div>
 
                 <!-- Confidence and Summary Section -->
-                <div class="grid grid-cols-1 gap-6">
+                <div class="grid grid-cols-1 gap-6 mt-8">
                     <!-- Confidence Rating -->
                     <div class="card bg-white rounded-xl shadow-lg p-6 border-t-4 border-purple-500">
                         <h3 class="text-xl font-semibold text-purple-600 flex items-center mb-4">
@@ -321,38 +321,37 @@
             
             results.classList.remove('hidden');
 
-            if (data.input_type === 'pitch') {
+            // Check if we have actual analysis data regardless of input type
+            const hasAnalysisData = data.key_strength || data.key_weakness || data.investor_impression || data.investor_response;
+            
+            if (data.input_type === 'pitch' || (data.input_type === 'chat' && hasAnalysisData)) {
                 // Hide message, show analysis
                 messageDisplay.classList.add('hidden');
                 analysisResults.classList.remove('hidden');
 
-                // Display pitch analysis
-                document.getElementById('key-strength').textContent = data.key_strength;
-                document.getElementById('key-weakness').textContent = data.key_weakness;
-                document.getElementById('investor-impression').textContent = data.investor_impression;
-                document.getElementById('missed-opportunity').textContent = data.missed_opportunity;
+                // Display analysis results
+                document.getElementById('key-strength').textContent = data.key_strength || 'Not available';
+                document.getElementById('key-weakness').textContent = data.key_weakness || 'Not available';
+                document.getElementById('investor-impression').textContent = data.investor_impression || 'Not available';
+                document.getElementById('missed-opportunity').textContent = data.missed_opportunity || 'Not available';
 
                 // Display confidence rating with color coding
                 const confidenceElement = document.getElementById('confidence');
-                confidenceElement.textContent = data.confidence_rating;
+                confidenceElement.textContent = data.confidence_rating || 'Medium';
                 confidenceElement.className = 'text-lg font-medium fade-in ' + 
                     (data.confidence_rating === 'High' ? 'text-green-600' : 
                      data.confidence_rating === 'Medium' ? 'text-yellow-600' : 'text-red-600');
 
                 // Display final summary
-                document.getElementById('final-summary').textContent = data.final_summary;
+                document.getElementById('final-summary').textContent = data.final_summary || data.message || 'Analysis completed';
             } else {
                 // Show message, hide analysis
                 messageDisplay.classList.remove('hidden');
                 analysisResults.classList.add('hidden');
 
-                // Set message text
+                // Set message text from server response or default
                 const messageText = document.getElementById('message-text');
-                messageText.textContent = "This doesn't appear to be a startup pitch or earnings call transcript. Please paste a relevant transcript for detailed analysis.";
-                
-                if (data.input_type === 'chat') {
-                    messageText.textContent += "\n\nThis looks like a general conversation or chat.";
-                }
+                messageText.textContent = data.message || "This doesn't appear to be a startup pitch or earnings call transcript. Please paste a relevant transcript for detailed analysis.";
             }
 
             // Scroll to results
