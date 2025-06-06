@@ -228,6 +228,21 @@
                         </h3>
                         <p id="final-summary" class="text-gray-700 text-lg leading-relaxed"></p>
                     </div>
+
+                    <!-- Memory Insights -->
+                    <div id="memory-insights-section" class="card bg-white rounded-xl shadow-lg p-6 border-t-4 border-orange-500" style="display: none;">
+                        <h3 class="text-xl font-semibold text-orange-600 flex items-center mb-4">
+                            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                            </svg>
+                            AI Memory Insights
+                        </h3>
+                        <div id="memory-insights-content">
+                            <div id="historical-insights" class="mb-3"></div>
+                            <div id="historical-comparisons" class="mb-3"></div>
+                            <div id="historical-recommendations"></div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -344,6 +359,11 @@
 
                 // Display final summary
                 document.getElementById('final-summary').textContent = data.final_summary || data.message || 'Analysis completed';
+
+                // Display memory insights if available
+                if (data.memory_insights && (data.memory_insights.insights.length > 0 || data.memory_insights.comparisons.length > 0 || data.memory_insights.recommendations.length > 0)) {
+                    displayMemoryInsights(data.memory_insights);
+                }
             } else {
                 // Show message, hide analysis
                 messageDisplay.classList.remove('hidden');
@@ -356,6 +376,51 @@
 
             // Scroll to results
             results.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        function displayMemoryInsights(memoryInsights) {
+            const section = document.getElementById('memory-insights-section');
+            const insightsDiv = document.getElementById('historical-insights');
+            const comparisonsDiv = document.getElementById('historical-comparisons');
+            const recommendationsDiv = document.getElementById('historical-recommendations');
+
+            // Clear previous content
+            insightsDiv.innerHTML = '';
+            comparisonsDiv.innerHTML = '';
+            recommendationsDiv.innerHTML = '';
+
+            // Display insights
+            if (memoryInsights.insights && memoryInsights.insights.length > 0) {
+                insightsDiv.innerHTML = `
+                    <h4 class="font-semibold text-gray-800 mb-2">📈 Historical Insights</h4>
+                    <ul class="list-disc list-inside text-sm text-gray-600 space-y-1">
+                        ${memoryInsights.insights.map(insight => `<li>${insight}</li>`).join('')}
+                    </ul>
+                `;
+            }
+
+            // Display comparisons
+            if (memoryInsights.comparisons && memoryInsights.comparisons.length > 0) {
+                comparisonsDiv.innerHTML = `
+                    <h4 class="font-semibold text-gray-800 mb-2">📊 Historical Comparisons</h4>
+                    <ul class="list-disc list-inside text-sm text-gray-600 space-y-1">
+                        ${memoryInsights.comparisons.map(comparison => `<li>${comparison}</li>`).join('')}
+                    </ul>
+                `;
+            }
+
+            // Display recommendations
+            if (memoryInsights.recommendations && memoryInsights.recommendations.length > 0) {
+                recommendationsDiv.innerHTML = `
+                    <h4 class="font-semibold text-gray-800 mb-2">💡 Recommendations</h4>
+                    <ul class="list-disc list-inside text-sm text-gray-600 space-y-1">
+                        ${memoryInsights.recommendations.map(rec => `<li>${rec}</li>`).join('')}
+                    </ul>
+                `;
+            }
+
+            // Show the section
+            section.style.display = 'block';
         }
     </script>
 </body>

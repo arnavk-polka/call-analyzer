@@ -17,6 +17,7 @@ from modules.communication_scorer import CommunicationScorerModule
 from modules.fundraising_calibration import FundraisingCalibrationModule
 from modules.auditor import AuditorModule
 from modules.conversation_preprocessor import ConversationPreprocessor
+from modules.memory_module import memory_system
 
 # Configure logging
 logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
@@ -65,6 +66,11 @@ class AuditResults(BaseModel):
     sections_to_regenerate: List[str]
     audit_summary: str
 
+class MemoryInsights(BaseModel):
+    insights: List[str] = []
+    comparisons: List[str] = []
+    recommendations: List[str] = []
+
 class AnalysisResponse(BaseModel):
     input_type: InputType
     key_strength: str = ""
@@ -79,6 +85,7 @@ class AnalysisResponse(BaseModel):
     communication_scores: Optional[CommunicationScores] = None
     fundraising_analysis: Optional[FundraisingAnalysis] = None
     audit_results: Optional[AuditResults] = None
+    memory_insights: Optional[MemoryInsights] = None
 
 # Add debug storage
 debug_storage = {
@@ -179,11 +186,30 @@ def analyze_pitch(text: str) -> dict:
         # Store fundraising analysis for debugging
         debug_storage['last_analysis']['fundraising_calibration_module'] = fundraising_analysis
         
-        # Then get the detailed analysis
+        # Get historical context from mem0 before analysis
+        print("🔍 Searching mem0 for similar pitch analyses...")
+        historical_context = ""
+        try:
+            # Extract key info for context search
+            text_preview = text[:500]  # First 500 chars for context search
+            context_memories = memory_system.search_context(f"Similar pitch analysis: {text_preview}", limit=3)
+            
+            if context_memories:
+                historical_context = f"\n\n**Historical Context from Similar Analyses:**\n"
+                for i, memory in enumerate(context_memories[:2], 1):  # Use top 2 results
+                    historical_context += f"{i}. {memory}\n"
+                print(f"🧠 Found {len(context_memories)} similar pitch analyses in memory")
+            else:
+                print(f"🧠 No similar pitch analyses found in memory")
+        except Exception as e:
+            print(f"⚠️ Could not retrieve pitch analysis context: {e}")
+
+        # Then get the detailed analysis with context
         response = client.chat.completions.create(
             model="gpt-4",
             messages=[
-                {"role": "system", "content": """You are an expert investor call analyst. Your task is to analyze transcripts and provide clear, direct insights.
+                {"role": "system", "content": """You are an expert investor call analyst with access to historical analysis data. Your task is to analyze transcripts and provide clear, direct insights.
+                Use any provided historical context to inform your analysis, but focus primarily on the current transcript.
                 Always format your response exactly as requested, with each section clearly labeled and followed by your analysis."""},
                 {"role": "user", "content": f"""Analyze this investor call transcript and provide the following insights:
 
@@ -204,8 +230,9 @@ def analyze_pitch(text: str) -> dict:
 
                 **Summary:**
                 Provide a comprehensive 2-3 sentence summary that ties all insights together.
+                {historical_context}
 
-                Transcript:
+                **Current Transcript to Analyze:**
                 {text}"""}
             ],
             temperature=0.7,
@@ -242,6 +269,7 @@ def analyze_pitch(text: str) -> dict:
             # TODO: Implement selective regeneration logic here
         
         debug_storage['last_analysis']['final_analysis'] = result
+        
         return result
         
     except Exception as e:
@@ -273,8 +301,21 @@ def analyze_investor_response(text: str) -> dict:
     debug_storage['last_analysis']['token_usage'] = {}
     
     try:
+        # Get historical context from mem0 before analysis
+        print("🔍 Searching mem0 for investor response patterns...")
+        try:
+            text_preview = text[:300]
+            context_memories = memory_system.search_context(f"Investor feedback and questions: {text_preview}", limit=3)
+            
+            if context_memories:
+                print(f"🧠 Found {len(context_memories)} similar investor responses in memory")
+            else:
+                print(f"🧠 No similar investor responses found in memory")
+        except Exception as e:
+            print(f"⚠️ Could not retrieve investor response context: {e}")
+        
         # Analyze investor response
-        investor_response_module = InvestorResponseModule(client)
+        investor_response_module = InvestorResponseModule(client, memory_system)
         response_analysis = investor_response_module.analyze(text)
         
         # Store analysis for debugging
@@ -357,11 +398,24 @@ def analyze_founder_response(text: str) -> dict:
     debug_storage['last_analysis']['token_usage'] = {}
     
     try:
-        # Analyze founder response using specialized prompting
+        # Get historical context for founder responses
+        historical_context = ""
+        try:
+            context_memories = memory_system.search_context(f"Founder response patterns: {text[:300]}", limit=2)
+            if context_memories:
+                historical_context = f"\n\n**Historical Context from Similar Founder Responses:**\n"
+                for i, memory in enumerate(context_memories, 1):
+                    historical_context += f"{i}. {memory}\n"
+                print(f"🧠 Using context from {len(context_memories)} similar founder responses")
+        except Exception as e:
+            print(f"⚠️ Could not retrieve founder response context: {e}")
+        
+        # Analyze founder response using specialized prompting with context
         response = client.chat.completions.create(
             model="gpt-4",
             messages=[
-                {"role": "system", "content": """You are an expert at analyzing founder responses to investor inquiries. 
+                {"role": "system", "content": """You are an expert at analyzing founder responses to investor inquiries with access to historical patterns. 
+                Use any provided historical context to understand common founder communication patterns.
                 Evaluate how well the founder addresses concerns, communicates value, and builds investor confidence."""},
                 {"role": "user", "content": f"""Analyze this founder response and provide insights:
 
@@ -382,8 +436,9 @@ def analyze_founder_response(text: str) -> dict:
 
                 **Summary:**
                 Provide a 2-3 sentence summary of the founder's communication effectiveness.
+                {historical_context}
 
-                Founder Response:
+                **Current Founder Response to Analyze:**
                 {text}"""}
             ],
             temperature=0.7,
@@ -683,25 +738,25 @@ async def analyze_transcript(request: TranscriptRequest):
                     else:
                         # Fallback to old classification method
                         print(f"No specific routing for speaker={speaker}, phase={phase}. Using fallback classification")
-                        input_type = classify_input(request.text)
-                        if input_type == InputType.PITCH:
-                            result = analyze_pitch(request.text)
-                            result["input_type"] = input_type
-                            return AnalysisResponse(**result)
+            input_type = classify_input(request.text)
+            if input_type == InputType.PITCH:
+                result = analyze_pitch(request.text)
+                result["input_type"] = input_type
+                return AnalysisResponse(**result)
                         elif input_type == InputType.FOUNDER_RESPONSE:
                             result = analyze_founder_response(request.text)
                             return AnalysisResponse(**result)
                         elif input_type == InputType.INVESTOR_RESPONSE:
                             result = analyze_investor_response(request.text)
                             return AnalysisResponse(**result)
-                        elif input_type == InputType.CHAT:
-                            result = analyze_chat(request.text)
-                            return AnalysisResponse(**result)
-                        else:
-                            result = handle_random_input(request.text)
-                            return AnalysisResponse(**result)
-            
-            except Exception as e:
+            elif input_type == InputType.CHAT:
+                result = analyze_chat(request.text)
+                return AnalysisResponse(**result)
+            else:
+                result = handle_random_input(request.text)
+                return AnalysisResponse(**result)
+
+    except Exception as e:
                 print(f"Error in advanced preprocessing: {e}")
                 import traceback
                 traceback.print_exc()
@@ -754,6 +809,37 @@ async def debug_ui():
 async def debug_data():
     """Get debug data for the debug UI."""
     return debug_storage['last_analysis']
+
+@app.get("/memory/stats")
+async def memory_stats():
+    """Get memory system statistics."""
+    return await memory_system.get_memory_stats()
+
+@app.get("/memory/insights/{query}")
+async def get_memory_insights(query: str):
+    """Get insights from memory based on query."""
+    try:
+        insights = memory_system.get_contextual_insights({"key_strength": query})
+        return insights
+    except Exception as e:
+        return {"error": str(e), "insights": [], "comparisons": [], "recommendations": []}
+
+@app.get("/memory/search/{query}")
+async def search_memory(query: str, limit: int = 5):
+    """Search mem0 for relevant past analyses"""
+    try:
+        if not memory_system.enabled:
+            return {"error": "Memory system is not enabled", "memories": []}
+        
+        memories = memory_system.search_context(query, limit=limit)
+        return {
+            "query": query,
+            "limit": limit,
+            "found": len(memories),
+            "memories": memories
+        }
+    except Exception as e:
+        return {"error": f"Failed to search memory: {str(e)}", "memories": []}
 
 def preprocess_and_suggest_type(text: str) -> dict:
     """Preprocess text using the advanced conversation preprocessor."""
@@ -911,7 +997,7 @@ async def analyze_conversation_block(block: dict) -> dict:
         elif speaker == "investor":
             # Analyze as investor response
             print(f"Calling InvestorResponseModule with text length: {len(text)}")
-            investor_response_module = InvestorResponseModule(client)
+            investor_response_module = InvestorResponseModule(client, memory_system)
             result = investor_response_module.analyze(text)
             
             # Store in debug_storage for debugging visibility
@@ -1115,12 +1201,56 @@ def extract_primary_analysis(analyzed_blocks: List[dict]) -> dict:
         print(f"Questions count: {len(primary_analysis['investor_response']['questions'])}")
         print(f"Interest signals count: {len(primary_analysis['investor_response']['interest_signals'])}")
     
+    # Store analysis in memory and get contextual insights
+    print(f"📝 Storing analysis in memory...")
+    try:
+        import asyncio
+        
+        # Store the analysis result (async)
+        asyncio.create_task(memory_system.store_analysis_result(primary_analysis))
+        
+        # Get contextual insights from memory (async)
+        try:
+            contextual_insights = asyncio.run(memory_system.get_contextual_insights(primary_analysis))
+            if contextual_insights and any(contextual_insights.values()):
+                print(f"🧠 Retrieved contextual insights from memory")
+                primary_analysis["memory_insights"] = contextual_insights
+            else:
+                print(f"🧠 No contextual insights available yet")
+        except Exception as insight_error:
+            print(f"🧠 Could not retrieve insights: {insight_error}")
+            
+    except Exception as e:
+        print(f"❌ Memory operation failed: {e}")
+    
     return primary_analysis
 
 if __name__ == "__main__":
     import uvicorn
-    print("Server starting at http://localhost:8000")
-    print("Debug panel available at http://localhost:8000/debug")
+    import os
+    
+    print("🔍 Investor Analyzer Pro - Starting up...")
+    
+    # Check for required API keys
+    if not os.getenv("OPENAI_API_KEY"):
+        print("❌ OPENAI_API_KEY not found!")
+        print("Please set your OpenAI API key:")
+        print("  Windows: $env:OPENAI_API_KEY=\"your-key\"")
+        print("  Linux/Mac: export OPENAI_API_KEY=\"your-key\"")
+        exit(1)
+    
+    print("✅ OpenAI API key found")
+    
+    # Check for mem0 API key (optional)
+    if os.getenv("MEM0_API_KEY"):
+        print("✅ Mem0 API key found - Memory features enabled")
+    else:
+        print("⚠️ MEM0_API_KEY not found - Memory features disabled")
+        print("  To enable: set MEM0_API_KEY=\"your-mem0-key\"")
+    
+    print("🚀 Server starting at http://localhost:8000")
+    print("🔍 Debug panel available at http://localhost:8000/debug")
+    
     uvicorn.run(
         "main:app", 
         host="0.0.0.0", 

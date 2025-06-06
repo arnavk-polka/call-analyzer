@@ -275,6 +275,10 @@
                         <h3>📊 Quality Rating</h3>
                         <p>${getQualityDisplay()}</p>
                     </div>
+                    <div class="info-card">
+                        <h3>🧠 Memory Status</h3>
+                        <p id="memory-status">Loading...</p>
+                    </div>
                 </div>
                 
                 ${renderModuleSection('📖 Input Text', 'input_text', debugData.input_text)}
@@ -336,11 +340,38 @@
             }
         }
 
+        async function loadMemoryStats() {
+            try {
+                const response = await fetch('/memory/stats');
+                const stats = await response.json();
+                
+                const statusElement = document.getElementById('memory-status');
+                if (stats.status === 'active') {
+                    statusElement.innerHTML = `
+                        <span class="text-green-600 font-semibold">Active</span><br>
+                        <span class="text-xs text-gray-500">${stats.total_memories} memories stored</span>
+                    `;
+                } else if (stats.status === 'disabled') {
+                    statusElement.innerHTML = '<span class="text-yellow-600">Disabled</span>';
+                } else {
+                    statusElement.innerHTML = '<span class="text-red-600">Error</span>';
+                }
+            } catch (error) {
+                document.getElementById('memory-status').innerHTML = '<span class="text-red-600">Failed to load</span>';
+            }
+        }
+
         // Load data when page loads
-        window.addEventListener('load', loadDebugData);
+        window.addEventListener('load', () => {
+            loadDebugData();
+            loadMemoryStats();
+        });
         
         // Auto-refresh every 30 seconds
-        setInterval(loadDebugData, 30000);
+        setInterval(() => {
+            loadDebugData();
+            loadMemoryStats();
+        }, 30000);
     </script>
 </body>
 </html> 

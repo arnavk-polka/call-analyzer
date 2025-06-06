@@ -1,22 +1,39 @@
 from typing import Dict, List
 from openai import OpenAI
+import asyncio
 
 class InvestorResponseModule:
-    def __init__(self, client: OpenAI):
+    def __init__(self, client: OpenAI, memory_system=None):
         self.client = client
+        self.memory_system = memory_system
 
     def analyze(self, investor_text: str) -> Dict[str, List[str]]:
         """
-        Analyze investor responses using Chain of Thought prompting.
+        Analyze investor responses using Chain of Thought prompting with historical context.
         Returns structured analysis of questions, objections, and interest signals.
         """
+        
+        # Get historical context from mem0
+        historical_context = ""
+        if self.memory_system:
+            try:
+                context_memories = self.memory_system.search_context(f"Investor feedback patterns: {investor_text[:200]}", limit=2)
+                if context_memories:
+                    historical_context = f"\n\n**Historical Context from Similar Investor Responses:**\n"
+                    for i, memory in enumerate(context_memories, 1):
+                        historical_context += f"{i}. {memory}\n"
+                    print(f"🧠 Using context from {len(context_memories)} similar investor responses")
+            except Exception as e:
+                print(f"⚠️ Could not retrieve investor response context: {e}")
+        
         response = self.client.chat.completions.create(
             model="gpt-4",
             messages=[
-                {"role": "system", "content": """You are an expert at analyzing investor responses and feedback.
+                {"role": "system", "content": """You are an expert at analyzing investor responses and feedback with access to historical patterns.
+                Use any provided historical context to better understand typical investor behavior patterns.
                 Focus on identifying subtle cues, implicit concerns, and genuine interest signals.
                 Structure your response clearly with specific sections."""},
-                {"role": "user", "content": f"""Let's analyze these investor responses step by step:
+                {"role": "user", "content": f"""Let's analyze these investor responses step by step:{historical_context}
 
 1. First, let's identify all questions asked:
 - Direct questions about the product/service
